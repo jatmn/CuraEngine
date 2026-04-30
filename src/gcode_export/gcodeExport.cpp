@@ -1027,7 +1027,8 @@ void GCodeExport::writeMoveBFB(const int x, const int y, const int z, const Velo
     estimate_calculator_.plan(
         TimeEstimateCalculator::Position(INT2MM(current_position_.x_), INT2MM(current_position_.y_), INT2MM(current_position_.z_), eToMm(current_e_value_)),
         speed,
-        feature);
+        feature,
+        feature != PrintFeatureType::MoveUnretracted);
 }
 
 void GCodeExport::writeTravel(const coord_t x, const coord_t y, const coord_t z, const Velocity& speed, const std::optional<double> retract_distance)
@@ -1051,7 +1052,7 @@ void GCodeExport::writeTravel(const coord_t x, const coord_t y, const coord_t z,
     const PrintFeatureType travel_move_type = sendTravel(Point3LL(x, y, z), speed, extruder_attr, retraction_amounts);
 
     *output_stream_ << "G0";
-    writeFXYZE(speed, x, y, z, current_e_value_, travel_move_type, retraction_amounts);
+    writeFXYZE(speed, x, y, z, current_e_value_, travel_move_type, retraction_amounts, true);
 }
 
 void GCodeExport::writeExtrusion(
@@ -1129,7 +1130,7 @@ void GCodeExport::writeExtrusion(
     const double new_e_value = current_e_value_ + extrusion_per_mm * diff_length;
 
     *output_stream_ << "G1";
-    writeFXYZE(speed, x, y, z, new_e_value, feature);
+    writeFXYZE(speed, x, y, z, new_e_value, feature, std::nullopt, true);
 }
 
 void GCodeExport::writeFXYZE(
@@ -1139,7 +1140,8 @@ void GCodeExport::writeFXYZE(
     const coord_t z,
     const double e,
     const PrintFeatureType& feature,
-    const std::optional<RetractionAmounts>& retraction_amounts)
+    const std::optional<RetractionAmounts>& retraction_amounts,
+    const bool include_actual_speed_profile)
 {
     bool any_written = false;
 
@@ -1192,7 +1194,7 @@ void GCodeExport::writeFXYZE(
     *output_stream_ << new_line_;
 
     current_position_ = Point3LL(x, y, z);
-    estimate_calculator_.plan(TimeEstimateCalculator::Position(INT2MM(x), INT2MM(y), INT2MM(z), eToMm(e)), speed, feature);
+    estimate_calculator_.plan(TimeEstimateCalculator::Position(INT2MM(x), INT2MM(y), INT2MM(z), eToMm(e)), speed, feature, include_actual_speed_profile);
 }
 
 void GCodeExport::writeUnretractionAndPrime()
@@ -1409,7 +1411,7 @@ void GCodeExport::writeZhop(Velocity speed /*= 0*/, const coord_t height, const 
     const PrintFeatureType travel_move_type = sendTravel(Point3LL(current_position_.x_, current_position_.y_, target_z), speed, extruder_attr, retraction_amounts);
 
     *output_stream_ << "G1";
-    writeFXYZE(speed, current_position_.x_, current_position_.y_, target_z, current_e_value_, travel_move_type, retraction_amounts);
+    writeFXYZE(speed, current_position_.x_, current_position_.y_, target_z, current_e_value_, travel_move_type, retraction_amounts, true);
 
     assert(speed > 0.0 && "Z hop speed should be positive.");
     total_bounding_box_.includeZ(target_z);

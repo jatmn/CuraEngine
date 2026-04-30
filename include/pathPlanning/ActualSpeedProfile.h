@@ -14,8 +14,9 @@ namespace cura
  *
  * Feedrates are in mm/s. Distances are in mm from the start of the segment.
  * A renderer can split the segment at accelerate_until and decelerate_after:
- * [0, accelerate_until] accelerates from entry to cruise, the middle cruises,
- * and [decelerate_after, segment end] decelerates from cruise to exit.
+ * [0, accelerate_until] accelerates from entry to cruise/peak, the middle
+ * cruises if accelerate_until < decelerate_after, and [decelerate_after,
+ * segment end] decelerates from cruise/peak to exit.
  */
 struct ActualSpeedProfile
 {

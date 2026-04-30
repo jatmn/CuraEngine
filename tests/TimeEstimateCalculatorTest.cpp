@@ -235,7 +235,7 @@ TEST_F(TimeEstimateCalculatorTest, ActualSpeedProfileMatchesPlannerTrapezoid)
     calculator.setFirmwareDefaults(jerkless);
 
     const TimeEstimateCalculator::Position destination(1000, 0, 0, 0);
-    calculator.plan(destination, 50.0, PrintFeatureType::Infill);
+    calculator.plan(destination, 50.0, PrintFeatureType::Infill, true);
 
     std::vector<ActualSpeedProfile> profiles;
     calculator.calculate(&profiles);
@@ -246,6 +246,42 @@ TEST_F(TimeEstimateCalculatorTest, ActualSpeedProfileMatchesPlannerTrapezoid)
     EXPECT_NEAR(MINIMUM_PLANNER_SPEED, profiles[0].exit_feedrate, EPSILON);
     EXPECT_NEAR(25.0, profiles[0].accelerate_until, EPSILON);
     EXPECT_NEAR(1000.0 - ((50.0 * 50.0 - MINIMUM_PLANNER_SPEED * MINIMUM_PLANNER_SPEED) / (2.0 * 50.0)), profiles[0].decelerate_after, EPSILON);
+}
+
+TEST_F(TimeEstimateCalculatorTest, ActualSpeedProfileUsesPeakFeedrateForShortLine)
+{
+    calculator.setFirmwareDefaults(jerkless);
+
+    const TimeEstimateCalculator::Position destination(25.0, 0, 0, 0);
+    calculator.plan(destination, 50.0, PrintFeatureType::Infill, true);
+
+    std::vector<ActualSpeedProfile> profiles;
+    calculator.calculate(&profiles);
+
+    const double d_apex = 25.0 / 2.0 + MINIMUM_PLANNER_SPEED * MINIMUM_PLANNER_SPEED / (4.0 * 50.0);
+    const double peak_feedrate = std::sqrt(2.0 * 50.0 * d_apex);
+
+    ASSERT_EQ(1, profiles.size());
+    EXPECT_NEAR(0.0, profiles[0].entry_feedrate, EPSILON);
+    EXPECT_NEAR(peak_feedrate, profiles[0].cruise_feedrate, EPSILON);
+    EXPECT_NEAR(MINIMUM_PLANNER_SPEED, profiles[0].exit_feedrate, EPSILON);
+    EXPECT_NEAR(d_apex, profiles[0].accelerate_until, EPSILON);
+    EXPECT_NEAR(d_apex, profiles[0].decelerate_after, EPSILON);
+}
+
+TEST_F(TimeEstimateCalculatorTest, ActualSpeedProfilesOnlyIncludeLayerViewBackedMoves)
+{
+    calculator.setFirmwareDefaults(jerkless);
+
+    calculator.plan(TimeEstimateCalculator::Position(10.0, 0, 0, 0), 50.0, PrintFeatureType::Infill);
+    calculator.plan(TimeEstimateCalculator::Position(20.0, 0, 0, 0), 50.0, PrintFeatureType::Infill, true);
+    calculator.plan(TimeEstimateCalculator::Position(20.0, 0, 0, 2.0), 25.0, PrintFeatureType::StationaryRetractUnretract);
+
+    std::vector<ActualSpeedProfile> profiles;
+    calculator.calculate(&profiles);
+
+    ASSERT_EQ(1, profiles.size());
+    EXPECT_GT(profiles[0].cruise_feedrate, 0.0);
 }
 
 TEST_F(TimeEstimateCalculatorTest, ShortLine)

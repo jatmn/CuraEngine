@@ -157,12 +157,13 @@ void TimeEstimateCalculator::calculateTrapezoidForBlock(Block* block, const Rati
     block->final_feedrate = final_feedrate;
 }
 
-void TimeEstimateCalculator::plan(Position newPos, Velocity feedrate, PrintFeatureType feature)
+void TimeEstimateCalculator::plan(Position newPos, Velocity feedrate, PrintFeatureType feature, bool include_actual_speed_profile)
 {
     Block block;
     memset(&block, 0, sizeof(block));
 
     block.feature = feature;
+    block.include_actual_speed_profile = include_actual_speed_profile;
 
     // block.maxTravel = 0; //Done by memset.
     for (size_t n = 0; n < NUM_AXIS; n++)
@@ -294,11 +295,12 @@ std::vector<Duration> TimeEstimateCalculator::calculate(std::vector<ActualSpeedP
         totals[static_cast<unsigned char>(block.feature)] += plateau_distance / block.nominal_feedrate;
         totals[static_cast<unsigned char>(block.feature)] += accelerationTimeFromDistance(block.final_feedrate, (block.distance - block.decelerate_after), block.acceleration);
 
-        if (actual_speed_profiles != nullptr && block.spatial_distance > 0.0)
+        if (actual_speed_profiles != nullptr && block.include_actual_speed_profile && block.spatial_distance > 0.0)
         {
+            const Velocity peak_feedrate = plateau_distance > 0.0 ? block.nominal_feedrate : Velocity(std::sqrt(square(block.initial_feedrate) + 2.0 * block.acceleration * block.accelerate_until));
             actual_speed_profiles->push_back(ActualSpeedProfile{
                 .entry_feedrate = block.initial_feedrate,
-                .cruise_feedrate = block.nominal_feedrate,
+                .cruise_feedrate = std::min(peak_feedrate, block.nominal_feedrate),
                 .exit_feedrate = block.final_feedrate,
                 .accelerate_until = block.accelerate_until,
                 .decelerate_after = block.decelerate_after,

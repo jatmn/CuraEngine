@@ -506,7 +506,8 @@ private:
         const coord_t z,
         const double e,
         const PrintFeatureType& feature,
-        const std::optional<RetractionAmounts>& retraction_amounts = std::nullopt);
+        const std::optional<RetractionAmounts>& retraction_amounts = std::nullopt,
+        const bool include_actual_speed_profile = false);
 
     /*!
      * The writeTravel and/or writeExtrusion when flavor == BFB

@@ -80,6 +80,7 @@ public:
         Position absDelta;
 
         PrintFeatureType feature;
+        bool include_actual_speed_profile;
     };
 
 private:
@@ -106,7 +107,7 @@ public:
      */
     void setFirmwareDefaults(const Settings& settings);
     void setPosition(Position newPos);
-    void plan(Position newPos, Velocity feedRate, PrintFeatureType feature);
+    void plan(Position newPos, Velocity feedRate, PrintFeatureType feature, bool include_actual_speed_profile = false);
     void addTime(const Duration& time);
     void setAcceleration(const Acceleration& acc); //!< Set the default acceleration to \p acc
     void setMaxXyJerk(const Velocity& jerk); //!< Set the max xy jerk to \p jerk
