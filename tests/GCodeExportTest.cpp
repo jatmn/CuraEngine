@@ -540,6 +540,28 @@ TEST_F(GCodeExportTest, WriteZHopEndCustomSpeed)
     EXPECT_EQ(std::string("G1 F240 Z2\n"), output().str()) << "Custom provided speed should be used.";
 }
 
+TEST_F(GCodeExportTest, ActualSpeedProfilesAreContinuousAcrossLayerTimeUpdates)
+{
+    Application::getInstance().current_slice_->scene.current_mesh_group->settings.add("layer_height", "0.2");
+    gcode.current_position_ = Point3LL(0, 0, 0);
+
+    EXPECT_CALL(*mock_communication, sendLineTo(testing::_, testing::_, testing::_, testing::_, testing::_)).Times(1);
+    EXPECT_CALL(*mock_communication, sendActualSpeedProfiles(testing::_)).Times(0);
+    gcode.writeTravel(Point3LL(MM2INT(10), 0, 0), 50.0);
+    gcode.updateTotalPrintTime();
+    testing::Mock::VerifyAndClearExpectations(mock_communication.get());
+
+    EXPECT_CALL(*mock_communication, sendLineTo(testing::_, testing::_, testing::_, testing::_, testing::_)).Times(1);
+    gcode.writeTravel(Point3LL(MM2INT(20), 0, 0), 50.0);
+
+    std::vector<ActualSpeedProfile> profiles;
+    EXPECT_CALL(*mock_communication, sendActualSpeedProfiles(testing::_)).WillOnce(testing::SaveArg<0>(&profiles));
+    gcode.sendActualSpeedProfiles();
+
+    ASSERT_EQ(2, profiles.size());
+    EXPECT_GT(profiles[0].exit_feedrate, 1.0) << "Layer time updates must not force preview metadata to decelerate at every layer boundary.";
+}
+
 TEST_F(GCodeExportTest, insertWipeScriptSingleMove)
 {
     gcode.current_position_ = Point3LL(1000, 1000, 1000);

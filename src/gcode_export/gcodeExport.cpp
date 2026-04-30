@@ -137,6 +137,7 @@ void GCodeExport::preSetup(const size_t start_extruder)
     }
 
     estimate_calculator_.setFirmwareDefaults(mesh_group->settings);
+    actual_speed_profile_calculator_.setFirmwareDefaults(mesh_group->settings);
 
     if (mesh_group == scene.mesh_groups.begin())
     {
@@ -561,19 +562,26 @@ void GCodeExport::resetTotalPrintTimeAndFilament()
     }
     current_e_value_ = 0.0;
     estimate_calculator_.reset();
+    actual_speed_profile_calculator_.reset();
 }
 
 void GCodeExport::updateTotalPrintTime()
 {
-    std::vector<ActualSpeedProfile> actual_speed_profiles;
-    std::vector<Duration> estimates = estimate_calculator_.calculate(&actual_speed_profiles);
+    std::vector<Duration> estimates = estimate_calculator_.calculate();
     for (size_t i = 0; i < estimates.size(); i++)
     {
         total_print_times_[i] += estimates[i];
     }
-    Application::getInstance().communication_->sendActualSpeedProfiles(actual_speed_profiles);
     estimate_calculator_.reset();
     writeTimeComment(getSumTotalPrintTimes());
+}
+
+void GCodeExport::sendActualSpeedProfiles()
+{
+    std::vector<ActualSpeedProfile> actual_speed_profiles;
+    actual_speed_profile_calculator_.calculate(&actual_speed_profiles);
+    Application::getInstance().communication_->sendActualSpeedProfiles(actual_speed_profiles);
+    actual_speed_profile_calculator_.reset();
 }
 
 void GCodeExport::writeComment(const std::string& unsanitized_comment)
@@ -1024,7 +1032,7 @@ void GCodeExport::writeMoveBFB(const int x, const int y, const int z, const Velo
     *output_stream_ << " F" << PrecisionedDouble{ 1, fspeed } << new_line_;
 
     current_position_ = Point3LL(x, y, z);
-    estimate_calculator_.plan(
+    planMove(
         TimeEstimateCalculator::Position(INT2MM(current_position_.x_), INT2MM(current_position_.y_), INT2MM(current_position_.z_), eToMm(current_e_value_)),
         speed,
         feature,
@@ -1194,7 +1202,17 @@ void GCodeExport::writeFXYZE(
     *output_stream_ << new_line_;
 
     current_position_ = Point3LL(x, y, z);
-    estimate_calculator_.plan(TimeEstimateCalculator::Position(INT2MM(x), INT2MM(y), INT2MM(z), eToMm(e)), speed, feature, include_actual_speed_profile);
+    planMove(TimeEstimateCalculator::Position(INT2MM(x), INT2MM(y), INT2MM(z), eToMm(e)), speed, feature, include_actual_speed_profile);
+}
+
+void GCodeExport::planMove(
+    TimeEstimateCalculator::Position position,
+    const Velocity& speed,
+    const PrintFeatureType& feature,
+    const bool include_actual_speed_profile)
+{
+    estimate_calculator_.plan(position, speed, feature);
+    actual_speed_profile_calculator_.plan(position, speed, feature, include_actual_speed_profile);
 }
 
 void GCodeExport::writeUnretractionAndPrime()
@@ -1215,7 +1233,7 @@ void GCodeExport::writeUnretractionAndPrime()
                                 << extruder_attr_[current_extruder_].extruder_character_ << PrecisionedDouble{ 5, output_e } << new_line_;
                 current_speed_ = extruder_attr_[current_extruder_].last_retraction_prime_speed_;
             }
-            estimate_calculator_.plan(
+            planMove(
                 TimeEstimateCalculator::Position(INT2MM(current_position_.x_), INT2MM(current_position_.y_), INT2MM(current_position_.z_), eToMm(current_e_value_)),
                 25.0,
                 PrintFeatureType::StationaryRetractUnretract);
@@ -1227,7 +1245,7 @@ void GCodeExport::writeUnretractionAndPrime()
             *output_stream_ << "G1 F" << PrecisionedDouble{ 1, extruder_attr_[current_extruder_].last_retraction_prime_speed_ * 60 } << " "
                             << extruder_attr_[current_extruder_].extruder_character_ << PrecisionedDouble{ 5, output_e } << new_line_;
             current_speed_ = extruder_attr_[current_extruder_].last_retraction_prime_speed_;
-            estimate_calculator_.plan(
+            planMove(
                 TimeEstimateCalculator::Position(INT2MM(current_position_.x_), INT2MM(current_position_.y_), INT2MM(current_position_.z_), eToMm(current_e_value_)),
                 current_speed_,
                 PrintFeatureType::StationaryRetractUnretract);
@@ -1240,7 +1258,7 @@ void GCodeExport::writeUnretractionAndPrime()
                         << extruder_attr_[current_extruder_].extruder_character_;
         *output_stream_ << PrecisionedDouble{ 5, output_e } << new_line_;
         current_speed_ = extruder_attr_[current_extruder_].last_retraction_prime_speed_;
-        estimate_calculator_.plan(
+        planMove(
             TimeEstimateCalculator::Position(INT2MM(current_position_.x_), INT2MM(current_position_.y_), INT2MM(current_position_.z_), eToMm(current_e_value_)),
             current_speed_,
             PrintFeatureType::StationaryRetractUnretract);
@@ -1320,7 +1338,7 @@ bool GCodeExport::writeRetraction(const RetractionConfig& config, bool force, bo
         }
         *output_stream_ << new_line_;
         // Assume default UM2 retraction settings.
-        estimate_calculator_.plan(
+        planMove(
             TimeEstimateCalculator::Position(
                 INT2MM(current_position_.x_),
                 INT2MM(current_position_.y_),
@@ -1338,7 +1356,7 @@ bool GCodeExport::writeRetraction(const RetractionConfig& config, bool force, bo
         writeRawRetract(retraction_amounts);
         *output_stream_ << new_line_;
         current_speed_ = speed;
-        estimate_calculator_.plan(
+        planMove(
             TimeEstimateCalculator::Position(INT2MM(current_position_.x_), INT2MM(current_position_.y_), INT2MM(current_position_.z_), eToMm(current_e_value_)),
             current_speed_,
             PrintFeatureType::StationaryRetractUnretract);
@@ -1904,6 +1922,7 @@ void GCodeExport::writePrintAcceleration(const Acceleration& acceleration)
     }
     current_print_acceleration_ = acceleration;
     estimate_calculator_.setAcceleration(acceleration);
+    actual_speed_profile_calculator_.setAcceleration(acceleration);
 }
 
 void GCodeExport::writeTravelAcceleration(const Acceleration& acceleration)
@@ -1929,6 +1948,7 @@ void GCodeExport::writeTravelAcceleration(const Acceleration& acceleration)
     }
     current_travel_acceleration_ = acceleration;
     estimate_calculator_.setAcceleration(acceleration);
+    actual_speed_profile_calculator_.setAcceleration(acceleration);
 }
 
 void GCodeExport::writeJerk(const Velocity& jerk)
@@ -1955,10 +1975,12 @@ void GCodeExport::writeJerk(const Velocity& jerk)
         if (getFlavor() == EGCodeFlavor::CHEETAH)
         {
             estimate_calculator_.setMaxXyJerk(jerk / 200);
+            actual_speed_profile_calculator_.setMaxXyJerk(jerk / 200);
         }
         else
         {
             estimate_calculator_.setMaxXyJerk(jerk);
+            actual_speed_profile_calculator_.setMaxXyJerk(jerk);
         }
     }
 }

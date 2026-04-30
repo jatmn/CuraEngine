@@ -180,6 +180,7 @@ void FffGcodeWriter::writeGCode(SliceDataStorage& storage, TimeKeeper& time_keep
 
     constexpr bool force = true;
     gcode.writeRetraction(storage.retraction_wipe_config_per_extruder[gcode.getExtruderNr()].retraction_config, force); // retract after finishing each meshgroup
+    gcode.sendActualSpeedProfiles();
 }
 
 unsigned int FffGcodeWriter::findSpiralizedLayerSeamVertexIndex(const SliceDataStorage& storage, const SliceMeshStorage& mesh, const int layer_nr, const int last_layer_nr)

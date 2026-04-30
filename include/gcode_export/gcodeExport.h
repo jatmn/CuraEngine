@@ -67,6 +67,7 @@ class GCodeExport : public NoCopy
     FRIEND_TEST(GCodeExportTest, WriteZHopEndZero);
     FRIEND_TEST(GCodeExportTest, WriteZHopEndDefaultSpeed);
     FRIEND_TEST(GCodeExportTest, WriteZHopEndCustomSpeed);
+    FRIEND_TEST(GCodeExportTest, ActualSpeedProfilesAreContinuousAcrossLayerTimeUpdates);
     FRIEND_TEST(GCodeExportTest, insertWipeScriptSingleMove);
     FRIEND_TEST(GCodeExportTest, insertWipeScriptMultipleMoves);
     FRIEND_TEST(GCodeExportTest, insertWipeScriptOptionalDelay);
@@ -183,6 +184,7 @@ private:
 
     std::vector<Duration> total_print_times_; //!< The total estimated print time in seconds for each feature
     TimeEstimateCalculator estimate_calculator_;
+    TimeEstimateCalculator actual_speed_profile_calculator_; //!< Preview-only planner used to generate continuous Actual Speed layer-view metadata.
 
     LayerIndex layer_nr_; //!< for sending travel data
 
@@ -314,6 +316,16 @@ public:
      */
     double getSumTotalPrintTimes();
     void updateTotalPrintTime();
+
+    /*!
+     * Send planner-resolved actual-speed profiles for layer preview.
+     *
+     * This is preview metadata only. It is intentionally separate from
+     * \ref updateTotalPrintTime so layer-time accounting can stay chunked per
+     * layer while Actual Speed visualization stays continuous across those
+     * chunks.
+     */
+    void sendActualSpeedProfiles();
     void resetTotalPrintTimeAndFilament();
 
     void writeComment(const std::string& comment);
@@ -507,6 +519,16 @@ private:
         const double e,
         const PrintFeatureType& feature,
         const std::optional<RetractionAmounts>& retraction_amounts = std::nullopt,
+        const bool include_actual_speed_profile = false);
+
+    /*!
+     * Plan a motion block for print-time accounting and Actual Speed preview
+     * metadata without changing emitted g-code.
+     */
+    void planMove(
+        TimeEstimateCalculator::Position position,
+        const Velocity& speed,
+        const PrintFeatureType& feature,
         const bool include_actual_speed_profile = false);
 
     /*!
