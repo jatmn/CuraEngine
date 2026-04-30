@@ -179,7 +179,8 @@ void TimeEstimateCalculator::plan(Position newPos, Velocity feedrate, PrintFeatu
     {
         feedrate = minimumfeedrate;
     }
-    block.distance = sqrtf(square(block.absDelta[0]) + square(block.absDelta[1]) + square(block.absDelta[2]));
+    block.spatial_distance = sqrtf(square(block.absDelta[0]) + square(block.absDelta[1]) + square(block.absDelta[2]));
+    block.distance = block.spatial_distance;
     if (block.distance == 0.0)
     {
         block.distance = block.absDelta[3];
@@ -270,11 +271,17 @@ void TimeEstimateCalculator::plan(Position newPos, Velocity feedrate, PrintFeatu
     blocks.push_back(block);
 }
 
-std::vector<Duration> TimeEstimateCalculator::calculate()
+std::vector<Duration> TimeEstimateCalculator::calculate(std::vector<ActualSpeedProfile>* actual_speed_profiles)
 {
     reversePass();
     forwardPass();
     recalculateTrapezoids();
+
+    if (actual_speed_profiles != nullptr)
+    {
+        actual_speed_profiles->clear();
+        actual_speed_profiles->reserve(blocks.size());
+    }
 
     std::vector<Duration> totals(static_cast<unsigned char>(PrintFeatureType::NumPrintFeatureTypes), 0.0);
     totals[static_cast<unsigned char>(PrintFeatureType::NoneType)] = extra_time; // Extra time (pause for minimum layer time, etc) is marked as NoneType
@@ -286,6 +293,17 @@ std::vector<Duration> TimeEstimateCalculator::calculate()
         totals[static_cast<unsigned char>(block.feature)] += accelerationTimeFromDistance(block.initial_feedrate, block.accelerate_until, block.acceleration);
         totals[static_cast<unsigned char>(block.feature)] += plateau_distance / block.nominal_feedrate;
         totals[static_cast<unsigned char>(block.feature)] += accelerationTimeFromDistance(block.final_feedrate, (block.distance - block.decelerate_after), block.acceleration);
+
+        if (actual_speed_profiles != nullptr && block.spatial_distance > 0.0)
+        {
+            actual_speed_profiles->push_back(ActualSpeedProfile{
+                .entry_feedrate = block.initial_feedrate,
+                .cruise_feedrate = block.nominal_feedrate,
+                .exit_feedrate = block.final_feedrate,
+                .accelerate_until = block.accelerate_until,
+                .decelerate_after = block.decelerate_after,
+            });
+        }
     }
     return totals;
 }

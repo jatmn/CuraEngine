@@ -17,6 +17,8 @@
 #include <sentry.h>
 #endif
 
+#include <cstdint>
+#include <cstring>
 #include <thread> //To sleep while waiting for the connection.
 #include <unordered_map> //To map settings to their extruder numbers for limit_to_extruder.
 
@@ -64,6 +66,13 @@ class ArcusCommunication::PathCompiler
     std::vector<float> line_widths; //!< Line widths for the line segments stored, the size of this vector is N.
     std::vector<float> line_thicknesses; //!< Line thicknesses for the line segments stored, the size of this vector is N.
     std::vector<float> line_velocities; //!< Line feedrates for the line segments stored, the size of this vector is N.
+    std::vector<float> actual_entry_feedrates; //!< Planner actual speed entry feedrates, one per line segment. Zero until populated from the planner.
+    std::vector<float> actual_cruise_feedrates; //!< Planner actual speed cruise feedrates, one per line segment. Zero until populated from the planner.
+    std::vector<float> actual_exit_feedrates; //!< Planner actual speed exit feedrates, one per line segment. Zero until populated from the planner.
+    std::vector<float> actual_accelerate_until; //!< Distance from segment start where acceleration ends, one per line segment. Zero until populated from the planner.
+    std::vector<float> actual_decelerate_after; //!< Distance from segment start where deceleration begins, one per line segment. Zero until populated from the planner.
+    std::vector<uint8_t> actual_speed_profile_valid; //!< Non-zero when the actual speed profile fields are populated for this segment.
+    std::vector<bool> expects_actual_speed_profile; //!< Internal marker: true only for segments that correspond to emitted g-code motion blocks.
     std::vector<float> points; //!< The points used to define the line segments, the size of this vector is D*(N+1) as each line segment is defined from one point to the next. D is
                                //!< the dimensionality of the point.
 
@@ -85,6 +94,13 @@ public:
         , line_widths()
         , line_thicknesses()
         , line_velocities()
+        , actual_entry_feedrates()
+        , actual_cruise_feedrates()
+        , actual_exit_feedrates()
+        , actual_accelerate_until()
+        , actual_decelerate_after()
+        , actual_speed_profile_valid()
+        , expects_actual_speed_profile()
         , points()
     {
     }
@@ -150,7 +166,7 @@ public:
         }
         else if (initial_point != last_point)
         {
-            addLineSegment(PrintFeatureType::NoneType, initial_point, 1, 0, 0.0);
+            addLineSegment(PrintFeatureType::NoneType, initial_point, 1, 0, 0.0, false);
         }
     }
 
@@ -195,6 +211,47 @@ public:
         line_velocity_data.append(reinterpret_cast<const char*>(line_velocities.data()), line_velocities.size() * sizeof(float));
         line_velocities.clear();
         path_segment->set_line_feedrate(line_velocity_data);
+
+        std::string actual_entry_feedrate_data;
+        actual_entry_feedrate_data.append(reinterpret_cast<const char*>(actual_entry_feedrates.data()), actual_entry_feedrates.size() * sizeof(float));
+        actual_entry_feedrates.clear();
+        path_segment->set_actual_entry_feedrate(actual_entry_feedrate_data);
+
+        std::string actual_cruise_feedrate_data;
+        actual_cruise_feedrate_data.append(reinterpret_cast<const char*>(actual_cruise_feedrates.data()), actual_cruise_feedrates.size() * sizeof(float));
+        actual_cruise_feedrates.clear();
+        path_segment->set_actual_cruise_feedrate(actual_cruise_feedrate_data);
+
+        std::string actual_exit_feedrate_data;
+        actual_exit_feedrate_data.append(reinterpret_cast<const char*>(actual_exit_feedrates.data()), actual_exit_feedrates.size() * sizeof(float));
+        actual_exit_feedrates.clear();
+        path_segment->set_actual_exit_feedrate(actual_exit_feedrate_data);
+
+        std::string actual_accelerate_until_data;
+        actual_accelerate_until_data.append(reinterpret_cast<const char*>(actual_accelerate_until.data()), actual_accelerate_until.size() * sizeof(float));
+        actual_accelerate_until.clear();
+        path_segment->set_actual_accelerate_until(actual_accelerate_until_data);
+
+        std::string actual_decelerate_after_data;
+        actual_decelerate_after_data.append(reinterpret_cast<const char*>(actual_decelerate_after.data()), actual_decelerate_after.size() * sizeof(float));
+        actual_decelerate_after.clear();
+        path_segment->set_actual_decelerate_after(actual_decelerate_after_data);
+
+        std::string actual_speed_profile_valid_data;
+        actual_speed_profile_valid_data.append(reinterpret_cast<const char*>(actual_speed_profile_valid.data()), actual_speed_profile_valid.size() * sizeof(uint8_t));
+        actual_speed_profile_valid.clear();
+        path_segment->set_actual_speed_profile_valid(actual_speed_profile_valid_data);
+
+        const int path_segment_index = proto_layer->path_segment_size() - 1;
+        for (size_t line_segment_index = 0; line_segment_index < expects_actual_speed_profile.size(); line_segment_index++)
+        {
+            if (expects_actual_speed_profile[line_segment_index])
+            {
+                _cs_private_data.actual_speed_profile_slots.push_back(
+                    ArcusCommunication::Private::ActualSpeedProfileSlot{ _layer_nr, path_segment_index, static_cast<int>(line_segment_index) });
+            }
+        }
+        expects_actual_speed_profile.clear();
     }
 
     /*!
@@ -222,7 +279,7 @@ public:
 
         if (to != last_point)
         {
-            addLineSegment(print_feature_type, to, width, thickness, feedrate);
+            addLineSegment(print_feature_type, to, width, thickness, feedrate, true);
         }
     }
 
@@ -253,13 +310,26 @@ private:
      * \param thickness The layer thickness of the polygon.
      * \param velocity How fast the polygon is printed.
      */
-    void addLineSegment(const PrintFeatureType& print_feature_type, const Point3LL& point, const coord_t& width, const coord_t& thickness, const Velocity& velocity)
+    void addLineSegment(
+        const PrintFeatureType& print_feature_type,
+        const Point3LL& point,
+        const coord_t& width,
+        const coord_t& thickness,
+        const Velocity& velocity,
+        const bool expects_profile)
     {
         addPoint3D(point);
         line_types.push_back(print_feature_type);
         line_widths.push_back(INT2MM(width));
         line_thicknesses.push_back(INT2MM(thickness));
         line_velocities.push_back(velocity);
+        actual_entry_feedrates.push_back(0.0F);
+        actual_cruise_feedrates.push_back(0.0F);
+        actual_exit_feedrates.push_back(0.0F);
+        actual_accelerate_until.push_back(0.0F);
+        actual_decelerate_after.push_back(0.0F);
+        actual_speed_profile_valid.push_back(0);
+        expects_actual_speed_profile.push_back(expects_profile);
     }
 };
 
@@ -375,6 +445,50 @@ void ArcusCommunication::sendLineTo(const PrintFeatureType& type, const Point3LL
     path_compiler->sendLineTo(type, to, line_width, line_thickness, velocity);
 }
 
+static void setFloatArrayValue(std::string& data, const int index, const float value)
+{
+    std::memcpy(data.data() + index * sizeof(float), &value, sizeof(float));
+}
+
+void ArcusCommunication::sendActualSpeedProfiles(const std::vector<ActualSpeedProfile>& profiles)
+{
+    path_compiler->flushPathSegments();
+
+    for (const ActualSpeedProfile& profile : profiles)
+    {
+        if (private_data->next_actual_speed_profile_slot >= private_data->actual_speed_profile_slots.size())
+        {
+            spdlog::warn("More planner actual speed profiles were produced than layer-view motion segments.");
+            return;
+        }
+
+        const Private::ActualSpeedProfileSlot& slot = private_data->actual_speed_profile_slots[private_data->next_actual_speed_profile_slot++];
+        std::shared_ptr<proto::LayerOptimized> layer = private_data->getOptimizedLayerById(slot.layer_nr);
+        proto::PathSegment* path_segment = layer->mutable_path_segment(slot.path_segment_index);
+
+        std::string actual_entry_feedrate = path_segment->actual_entry_feedrate();
+        std::string actual_cruise_feedrate = path_segment->actual_cruise_feedrate();
+        std::string actual_exit_feedrate = path_segment->actual_exit_feedrate();
+        std::string actual_accelerate_until = path_segment->actual_accelerate_until();
+        std::string actual_decelerate_after = path_segment->actual_decelerate_after();
+        std::string actual_speed_profile_valid = path_segment->actual_speed_profile_valid();
+
+        setFloatArrayValue(actual_entry_feedrate, slot.line_segment_index, static_cast<float>(profile.entry_feedrate));
+        setFloatArrayValue(actual_cruise_feedrate, slot.line_segment_index, static_cast<float>(profile.cruise_feedrate));
+        setFloatArrayValue(actual_exit_feedrate, slot.line_segment_index, static_cast<float>(profile.exit_feedrate));
+        setFloatArrayValue(actual_accelerate_until, slot.line_segment_index, static_cast<float>(profile.accelerate_until));
+        setFloatArrayValue(actual_decelerate_after, slot.line_segment_index, static_cast<float>(profile.decelerate_after));
+        actual_speed_profile_valid[slot.line_segment_index] = 1;
+
+        path_segment->set_actual_entry_feedrate(actual_entry_feedrate);
+        path_segment->set_actual_cruise_feedrate(actual_cruise_feedrate);
+        path_segment->set_actual_exit_feedrate(actual_exit_feedrate);
+        path_segment->set_actual_accelerate_until(actual_accelerate_until);
+        path_segment->set_actual_decelerate_after(actual_decelerate_after);
+        path_segment->set_actual_speed_profile_valid(actual_speed_profile_valid);
+    }
+}
+
 void ArcusCommunication::sendOptimizedLayerData()
 {
     path_compiler->flushPathSegments(); // Make sure the last path segment has been flushed from the compiler.
@@ -397,6 +511,8 @@ void ArcusCommunication::sendOptimizedLayerData()
     data.current_layer_count = 0;
     data.current_layer_offset = 0;
     data.slice_data.clear();
+    private_data->actual_speed_profile_slots.clear();
+    private_data->next_actual_speed_profile_slot = 0;
 }
 
 void ArcusCommunication::sendPrintInformation(const std::vector<cura::Duration>& time_estimates, const PrintInformation& print_information) const

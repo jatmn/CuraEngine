@@ -4,8 +4,11 @@
 #ifndef COMMUNICATION_H
 #define COMMUNICATION_H
 
+#include <vector>
+
 #include "PrintInformation.h"
 #include "geometry/Point2LL.h"
+#include "pathPlanning/ActualSpeedProfile.h"
 #include "settings/types/LayerIndex.h"
 #include "settings/types/Velocity.h"
 
@@ -79,6 +82,16 @@ public:
      * \param velocity The velocity of printing this polygon.
      */
     virtual void sendLineTo(const PrintFeatureType& type, const Point3LL& to, const coord_t& line_width, const coord_t& line_thickness, const Velocity& velocity) = 0;
+
+    /*
+     * \brief Attach planner-resolved actual speed profiles to previously sent
+     * layer-view motion segments.
+     *
+     * Profiles must be provided in the same order that motion segments were
+     * written to g-code. Implementations that do not expose layer-view data can
+     * ignore this.
+     */
+    virtual void sendActualSpeedProfiles(const std::vector<ActualSpeedProfile>& profiles) = 0;
 
     /*
      * \brief Send the current position to visualise.

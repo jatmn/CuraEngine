@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "PrintFeature.h"
+#include "pathPlanning/ActualSpeedProfile.h"
 #include "settings/types/Duration.h" //Print time estimates.
 #include "settings/types/Ratio.h"
 #include "settings/types/Velocity.h" //Speeds and accelerations at which we print.
@@ -73,6 +74,7 @@ public:
         Velocity nominal_feedrate;
         double maxTravel;
         double distance;
+        double spatial_distance;
         Acceleration acceleration;
         Position delta;
         Position absDelta;
@@ -111,7 +113,7 @@ public:
 
     void reset();
 
-    std::vector<Duration> calculate();
+    std::vector<Duration> calculate(std::vector<ActualSpeedProfile>* actual_speed_profiles = nullptr);
 
 private:
     void reversePass();

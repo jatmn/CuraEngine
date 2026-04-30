@@ -230,6 +230,24 @@ TEST_F(TimeEstimateCalculatorTest, SingleLineNoJerk)
                 EPSILON);
 }
 
+TEST_F(TimeEstimateCalculatorTest, ActualSpeedProfileMatchesPlannerTrapezoid)
+{
+    calculator.setFirmwareDefaults(jerkless);
+
+    const TimeEstimateCalculator::Position destination(1000, 0, 0, 0);
+    calculator.plan(destination, 50.0, PrintFeatureType::Infill);
+
+    std::vector<ActualSpeedProfile> profiles;
+    calculator.calculate(&profiles);
+
+    ASSERT_EQ(1, profiles.size());
+    EXPECT_NEAR(0.0, profiles[0].entry_feedrate, EPSILON);
+    EXPECT_NEAR(50.0, profiles[0].cruise_feedrate, EPSILON);
+    EXPECT_NEAR(MINIMUM_PLANNER_SPEED, profiles[0].exit_feedrate, EPSILON);
+    EXPECT_NEAR(25.0, profiles[0].accelerate_until, EPSILON);
+    EXPECT_NEAR(1000.0 - ((50.0 * 50.0 - MINIMUM_PLANNER_SPEED * MINIMUM_PLANNER_SPEED) / (2.0 * 50.0)), profiles[0].decelerate_after, EPSILON);
+}
+
 TEST_F(TimeEstimateCalculatorTest, ShortLine)
 {
     calculator.setFirmwareDefaults(jerkless);

@@ -2,6 +2,7 @@
 // CuraEngine is released under the terms of the AGPLv3 or higher.
 
 #include <google/protobuf/message.h>
+#include <cstring>
 #include <memory>
 #include <numbers>
 
@@ -19,6 +20,13 @@
 // NOLINTBEGIN(*-magic-numbers)
 namespace cura
 {
+
+static float readFloat(const std::string& data, const size_t index)
+{
+    float value = 0.0F;
+    std::memcpy(&value, data.data() + index * sizeof(float), sizeof(float));
+    return value;
+}
 
 /*
  * Test fixtures for an arcus communication class and some polygons to try
@@ -155,6 +163,29 @@ TEST_F(ArcusCommunicationTest, SendLayerComplete)
     EXPECT_EQ(static_cast<google::protobuf::int32>(layer_nr), message->id()) << "getOptimizedLayerById() must return a layer with the correct ID.";
     EXPECT_EQ(static_cast<float>(layer_z), message->height());
     EXPECT_EQ(static_cast<float>(layer_thickness), message->thickness());
+}
+
+TEST_F(ArcusCommunicationTest, SendActualSpeedProfiles)
+{
+    ac->setLayerForSend(0);
+    ac->sendCurrentPosition(Point3LL(0, 0, 0));
+    ac->sendLineTo(PrintFeatureType::Infill, Point3LL(MM2INT(10), 0, 0), MM2INT(0.4), MM2INT(0.2), 50.0);
+
+    ac->sendActualSpeedProfiles(std::vector<ActualSpeedProfile>{
+        ActualSpeedProfile{ .entry_feedrate = 5.0, .cruise_feedrate = 50.0, .exit_feedrate = 10.0, .accelerate_until = 2.0, .decelerate_after = 8.0 } });
+
+    const std::shared_ptr<proto::LayerOptimized> layer = ac->private_data->getOptimizedLayerById(0);
+    ASSERT_EQ(1, layer->path_segment_size());
+    const proto::PathSegment& segment = layer->path_segment(0);
+
+    EXPECT_EQ(sizeof(float), segment.actual_entry_feedrate().size());
+    EXPECT_NEAR(5.0F, readFloat(segment.actual_entry_feedrate(), 0), 0.001F);
+    EXPECT_NEAR(50.0F, readFloat(segment.actual_cruise_feedrate(), 0), 0.001F);
+    EXPECT_NEAR(10.0F, readFloat(segment.actual_exit_feedrate(), 0), 0.001F);
+    EXPECT_NEAR(2.0F, readFloat(segment.actual_accelerate_until(), 0), 0.001F);
+    EXPECT_NEAR(8.0F, readFloat(segment.actual_decelerate_after(), 0), 0.001F);
+    ASSERT_EQ(1, segment.actual_speed_profile_valid().size());
+    EXPECT_EQ(1, segment.actual_speed_profile_valid()[0]);
 }
 
 TEST_F(ArcusCommunicationTest, SendProgress)

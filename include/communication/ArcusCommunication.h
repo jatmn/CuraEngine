@@ -125,6 +125,7 @@ public:
      * \param velocity The velocity of printing this polygon.
      */
     void sendLineTo(const PrintFeatureType& type, const Point3LL& to, const coord_t& line_width, const coord_t& line_thickness, const Velocity& velocity) override;
+    void sendActualSpeedProfiles(const std::vector<ActualSpeedProfile>& profiles) override;
 
     /*
      * \brief Send the sliced layer data to the front-end after the optimisation

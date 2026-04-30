@@ -27,6 +27,7 @@ namespace cura
 ArcusCommunication::Private::Private()
     : socket(nullptr)
     , object_count(0)
+    , next_actual_speed_profile_slot(0)
     , last_sent_progress(-1)
     , slice_count(0)
     , millisecUntilNextTry(100)

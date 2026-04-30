@@ -95,6 +95,7 @@ public:
      * The command line doesn't show any layer view so this is ignored.
      */
     void sendLineTo(const PrintFeatureType&, const Point3LL&, const coord_t&, const coord_t&, const Velocity&) override;
+    void sendActualSpeedProfiles(const std::vector<ActualSpeedProfile>&) override;
 
     /*
      * \brief Complete a layer to show it in layer view.

@@ -122,6 +122,12 @@ message PathSegment {
     bytes line_width = 5; // The widths of the line segments as bytes of a float array of length 1 or N
     bytes line_thickness = 6; // The thickness of the line segments as bytes of a float array of length 1 or N
     bytes line_feedrate = 7; // The feedrate of the line segments as bytes of a float array of length 1 or N
+    bytes actual_entry_feedrate = 8; // Planner entry feedrate in mm/s as bytes of a float array of length N
+    bytes actual_cruise_feedrate = 9; // Planner cruise/nominal feedrate in mm/s as bytes of a float array of length N
+    bytes actual_exit_feedrate = 10; // Planner exit feedrate in mm/s as bytes of a float array of length N
+    bytes actual_accelerate_until = 11; // Distance in mm from the segment start where acceleration ends, float array of length N
+    bytes actual_decelerate_after = 12; // Distance in mm from the segment start where deceleration begins, float array of length N
+    bytes actual_speed_profile_valid = 13; // Unsigned char array of length N; non-zero entries have planner-accurate actual speed profile data
 }
 
 

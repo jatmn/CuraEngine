@@ -565,11 +565,13 @@ void GCodeExport::resetTotalPrintTimeAndFilament()
 
 void GCodeExport::updateTotalPrintTime()
 {
-    std::vector<Duration> estimates = estimate_calculator_.calculate();
+    std::vector<ActualSpeedProfile> actual_speed_profiles;
+    std::vector<Duration> estimates = estimate_calculator_.calculate(&actual_speed_profiles);
     for (size_t i = 0; i < estimates.size(); i++)
     {
         total_print_times_[i] += estimates[i];
     }
+    Application::getInstance().communication_->sendActualSpeedProfiles(actual_speed_profiles);
     estimate_calculator_.reset();
     writeTimeComment(getSumTotalPrintTimes());
 }

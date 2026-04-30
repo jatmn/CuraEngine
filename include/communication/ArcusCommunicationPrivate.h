@@ -6,6 +6,7 @@
 #ifdef ARCUS
 
 #include <sstream> //For ostringstream.
+#include <vector>
 
 #include "ArcusCommunication.h" //We're adding a subclass to this.
 #include "SliceDataStruct.h"
@@ -22,6 +23,13 @@ class ArcusCommunication::Private
 
 public:
     Private();
+
+    struct ActualSpeedProfileSlot
+    {
+        LayerIndex::value_type layer_nr;
+        int path_segment_index;
+        int line_segment_index;
+    };
 
     /*
      * Get the optimised layer data for a specific layer.
@@ -54,6 +62,8 @@ public:
 
     SliceDataStruct<cura::proto::Layer> sliced_layers;
     SliceDataStruct<cura::proto::LayerOptimized> optimized_layers;
+    std::vector<ActualSpeedProfileSlot> actual_speed_profile_slots;
+    size_t next_actual_speed_profile_slot;
 
     int last_sent_progress; //!< Last sent progress promille (1/1000th). Used to not send duplicate messages with the same promille.
 
